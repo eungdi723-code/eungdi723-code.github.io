@@ -176,7 +176,11 @@ function toggle(){
 }
 function del(i,x){
   if(arm!==i){arm=i;x.textContent='DEL?';x.classList.add('q');setTimeout(()=>{if(arm===i){arm=-1;x.textContent='×';x.classList.remove('q')}},2500);return}
-  arm=-1;remove(i);
+  arm=-1;
+  const s=songs[i];if(!s)return;
+  const w='삭제',v=prompt('「'+s.t+'」을(를) 지우려면\n아래 글자를 똑같이 입력하세요\n\n'+w);
+  if(v===null||v.trim()!==w){x.textContent='×';x.classList.remove('q');if(v!==null)flash('CANCEL');return}
+  remove(i);
 }
 async function remove(i){
   const s=songs[i];
