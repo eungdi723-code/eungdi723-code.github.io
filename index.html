@@ -62,7 +62,7 @@ body{background:var(--bg);padding:0;display:flex;justify-content:center;align-it
 .wh button{position:absolute;display:grid;place-items:center;padding:0;border:0;border-radius:12px;background:none;color:var(--lab);font:inherit;cursor:pointer}
 .wh button:active{opacity:.45}
 .wh svg{width:24px;height:24px;fill:currentColor;display:block}
-.wh .bm{top:8px;left:50%;width:76px;height:48px;margin-left:-38px;font:12px/1 'DotGothic16',monospace;letter-spacing:2px}
+.wh .bm{top:8px;left:50%;width:76px;height:48px;margin-left:-38px;font:12px/1 'DotGothic16',monospace;letter-spacing:2px;padding-left:2px}
 .wh .ba{bottom:8px;left:50%;width:76px;height:48px;margin-left:-38px}
 .wh .bp{left:8px;top:50%;width:48px;height:76px;margin-top:-38px}
 .wh .bn{right:8px;top:50%;width:48px;height:76px;margin-top:-38px}
@@ -106,7 +106,7 @@ body{background:var(--bg);padding:0;display:flex;justify-content:center;align-it
 document.addEventListener('touchmove',e=>{if(e.touches.length>1||!e.target.closest('.ls'))e.preventDefault()},{passive:false});
 const $=s=>document.querySelector(s);
 const el={dev:$('.dev'),ls:$('.ls'),t:$('.t'),a:$('.a'),bar:$('.bar'),fill:$('.bar i'),cu:$('.cu'),du:$('.du'),sp:$('.sp'),ix:$('.ix'),f:$('#f')};
-const au=document.createElement('video');au.playsInline=true;au.setAttribute('playsinline','');au.setAttribute('webkit-playsinline','');
+const au=document.createElement('video');au.playsInline=true;au.setAttribute('playsinline','');au.setAttribute('webkit-playsinline','');au.style.cssText='position:fixed;left:-9px;top:-9px;width:1px;height:1px;opacity:0;pointer-events:none';document.body.appendChild(au);
 const MIME={mp3:'audio/mpeg',m4a:'audio/mp4',aac:'audio/aac',flac:'audio/flac',wav:'audio/wav',ogg:'audio/ogg',opus:'audio/ogg',mp4:'video/mp4',m4v:'video/mp4',mov:'video/quicktime',webm:'video/webm','3gp':'video/3gpp'};
 const SILENT='data:audio/wav;base64,UklGRkQDAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YSADAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==';
 let unlocked=false;
@@ -154,22 +154,28 @@ async function play(i,go=true){
     const ty=b.type||MIME[(s.file.split('.').pop()||'').toLowerCase()]||'';
     el.fill.style.width='0';el.cu.textContent='00:00';
     el.ls.children[i]?.scrollIntoView({block:'nearest'});
-    let mem=null;
-    for(let k=0;k<2;k++){
+    const tries=[];
+    if(b.size<=1e8)tries.push(async()=>new Blob([await b.arrayBuffer()],{type:ty}));
+    tries.push(async()=>b.type?b:new Blob([b],{type:ty}));
+    let bad=null;
+    for(const t of tries){
       if(url)URL.revokeObjectURL(url);
-      url=URL.createObjectURL(k?mem:(b.type?b:new Blob([b],{type:ty})));
-      au.src=url;
-      if(!go)break;
-      try{await au.play();break}
-      catch(e){
+      url=URL.createObjectURL(await t());au.src=url;
+      if(!go){bad=null;break}
+      try{
+        await Promise.race([au.play(),new Promise((_,r)=>setTimeout(()=>r({name:'Stall'}),4000))]);
+        if(au.error)throw{name:'MediaError'};
+        bad=null;break;
+      }catch(e){
         if(e&&e.name==='AbortError')return;
-        if(k||(e&&e.name==='NotAllowedError'))throw e;
-        mem=new Blob([await b.arrayBuffer()],{type:ty});
+        bad=e;
+        if(e&&e.name==='NotAllowedError')break;
       }
     }
+    if(bad)throw bad;
   }catch(e){
     au.pause();
-    flash(e&&e.name==='NotAllowedError'?'TAP PLAY':'ERR'+(au.error?au.error.code:''));
+    flash(e&&e.name==='NotAllowedError'?'TAP PLAY':e&&e.name==='Stall'?'ERR STALL':'ERR'+(au.error?au.error.code:''));
   }
   syncOn();
   if('mediaSession' in navigator)navigator.mediaSession.metadata=new MediaMetadata({title:s.t,artist:s.ar||'',album:'mp3★'});
