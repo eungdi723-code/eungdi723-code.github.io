@@ -108,6 +108,10 @@ const $=s=>document.querySelector(s);
 const el={dev:$('.dev'),ls:$('.ls'),t:$('.t'),a:$('.a'),bar:$('.bar'),fill:$('.bar i'),cu:$('.cu'),du:$('.du'),sp:$('.sp'),ix:$('.ix'),f:$('#f')};
 const au=document.createElement('video');au.playsInline=true;au.setAttribute('playsinline','');au.setAttribute('webkit-playsinline','');
 const MIME={mp3:'audio/mpeg',m4a:'audio/mp4',aac:'audio/aac',flac:'audio/flac',wav:'audio/wav',ogg:'audio/ogg',opus:'audio/ogg',mp4:'video/mp4',m4v:'video/mp4',mov:'video/quicktime',webm:'video/webm','3gp':'video/3gpp'};
+const SILENT='data:audio/wav;base64,UklGRkQDAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YSADAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==';
+let unlocked=false;
+const unlock=()=>{if(unlocked)return;unlocked=true;try{if(au.src)return;au.src=SILENT;const p=au.play();au.pause();p&&p.catch(()=>{});au.removeAttribute('src');au.load()}catch(e){}};
+['touchend','click'].forEach(t=>document.addEventListener(t,unlock,{capture:true,once:true}));
 const syncOn=()=>el.dev.classList.toggle('on',!au.paused&&!au.error);
 const M=['ALL','ONE','SHF'],pad=n=>String(n).padStart(2,'0');
 let db,songs=[],cur=-1,url='',mode=0,arm=-1,ft,lp=0;
@@ -147,11 +151,26 @@ async function play(i,go=true){
   const s=songs[i];if(!s)return;cur=i;head();
   try{
     const b=await P(tx('readonly').objectStore('blobs').get(s.id));if(!b)throw 0;
-    if(url)URL.revokeObjectURL(url);const bb=b.type?b:new Blob([b],{type:MIME[(s.file.split('.').pop()||'').toLowerCase()]||''});url=URL.createObjectURL(bb);au.src=url;
+    const ty=b.type||MIME[(s.file.split('.').pop()||'').toLowerCase()]||'';
     el.fill.style.width='0';el.cu.textContent='00:00';
     el.ls.children[i]?.scrollIntoView({block:'nearest'});
-    if(go)await au.play();
-  }catch(e){if(!e||e.name!=='AbortError'){au.pause();flash('ERR'+(au.error?au.error.code:''))}}
+    let mem=null;
+    for(let k=0;k<2;k++){
+      if(url)URL.revokeObjectURL(url);
+      url=URL.createObjectURL(k?mem:(b.type?b:new Blob([b],{type:ty})));
+      au.src=url;
+      if(!go)break;
+      try{await au.play();break}
+      catch(e){
+        if(e&&e.name==='AbortError')return;
+        if(k||(e&&e.name==='NotAllowedError'))throw e;
+        mem=new Blob([await b.arrayBuffer()],{type:ty});
+      }
+    }
+  }catch(e){
+    au.pause();
+    flash(e&&e.name==='NotAllowedError'?'TAP PLAY':'ERR'+(au.error?au.error.code:''));
+  }
   syncOn();
   if('mediaSession' in navigator)navigator.mediaSession.metadata=new MediaMetadata({title:s.t,artist:s.ar||'',album:'mp3★'});
   save();
